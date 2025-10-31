@@ -15,6 +15,7 @@ from .serializers import (
 )
 from .utils import send_email
 
+
 User = get_user_model()
 
 
@@ -32,7 +33,11 @@ class LoginView(generics.GenericAPIView):
         if not email or not password:
             return Response({"detail": "Email and password are required."}, status=status.HTTP_400_BAD_REQUEST)
 
-        user = authenticate(request, email=email, password=password)
+        try:
+            user_obj = User.objects.get(email=email)
+            user = authenticate(request, username=user_obj.username, password=password)
+        except User.DoesNotExist:
+            user = None
 
         if user is None:
             return Response({"detail": "Invalid email or password."}, status=status.HTTP_401_UNAUTHORIZED)
@@ -40,9 +45,7 @@ class LoginView(generics.GenericAPIView):
         if not user.is_active:
             return Response({"detail": "Account not active. Please verify your OTP."}, status=status.HTTP_403_FORBIDDEN)
 
-        # Generate JWT tokens
         refresh = RefreshToken.for_user(user)
-
         return Response({
             "message": "Login successful.",
             "user": {
@@ -56,7 +59,6 @@ class LoginView(generics.GenericAPIView):
                 "access": str(refresh.access_token),
             },
         }, status=status.HTTP_200_OK)
-
 
 OTP_EXPIRY_MINUTES = 10
 
@@ -114,7 +116,7 @@ class ResendOTPView(generics.GenericAPIView):
 class ChangePasswordView(generics.UpdateAPIView):
     permission_classes = [permissions.IsAuthenticated]
 
-    def update(self, request):
+    def post(self, request):
         user = request.user
         old_password = request.data.get("old_password")
         new_password = request.data.get("new_password")

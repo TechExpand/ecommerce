@@ -81,25 +81,24 @@ class AdminInviteSerializer(serializers.ModelSerializer):
 
         send_email(invitation.email, subject, template)
         return invitation
-
-
+    
 class AcceptAdminInviteSerializer(serializers.Serializer):
     password = serializers.CharField(write_only=True)
-    token = serializers.SerializerMethodField()
+    token = serializers.CharField(write_only=True)  # change from SerializerMethodField
 
     def validate(self, attrs):
+        token = attrs.get("token")
+
         try:
-            invitation = Invitation.objects.get(token=self.context['token'])
+            invitation = Invitation.objects.get(token=token)
         except Invitation.DoesNotExist:
             raise serializers.ValidationError("Invalid or expired invitation token.")
 
         if not invitation.is_valid():
             raise serializers.ValidationError("Invitation expired or already used.")
 
-        attrs["invitation"] = invitation
-        # make sure to import this
-        from django.contrib.auth.password_validation import validate_password
         validate_password(attrs["password"])
+        attrs["invitation"] = invitation
         return attrs
 
     def create(self, validated_data):
@@ -117,8 +116,6 @@ class AcceptAdminInviteSerializer(serializers.Serializer):
         user.save()
 
         invitation.mark_used()
-        return user
 
-    def get_token(self, obj):
-        refresh = RefreshToken.for_user(obj)
-        return str(refresh.access_token)
+        refresh = RefreshToken.for_user(user)
+        return {"user": user, "token": str(refresh.access_token)}

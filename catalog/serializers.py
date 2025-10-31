@@ -9,7 +9,7 @@ class CategorySerializer(serializers.ModelSerializer):
 
     class Meta:
         model = Category
-        fields = ('id', 'name', 'description', 'parent', 'children')
+        fields = ("id", "name", "description", "parent", "children")
 
     def get_children(self, obj):
         qs = obj.children.all()
@@ -21,33 +21,18 @@ class DiscountSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = Discount
-        fields = '__all__'
-        read_only_fields = ('created_by',)
+        fields = "__all__"
+        read_only_fields = ("created_by",)
 
     def validate(self, data):
-        # Prevent percent discounts above 100%
-        if data['discount_type'] == Discount.PERCENT and data['value'] > Decimal('100'):
+        if data["discount_type"] == Discount.PERCENT and data["value"] > Decimal("100"):
             raise serializers.ValidationError("Percent discount cannot exceed 100.")
 
-        # Ensure discount end date is after start date
         start_at = data.get("start_at")
         end_at = data.get("end_at")
         if start_at and end_at and end_at < start_at:
             raise serializers.ValidationError("End date must be after start date.")
-
         return data
-
-    def validate_product(self, product):
-        """
-        Ensure that the logged-in user can only create discounts
-        for their own products.
-        """
-        request = self.context.get("request")
-        if request and request.user.is_authenticated:
-            if product.owner != request.user:
-                raise serializers.ValidationError("You can only create discounts for your own products.")
-        return product
-
 
 class ProductListSerializer(serializers.ModelSerializer):
     final_price = serializers.SerializerMethodField()
