@@ -1,3 +1,4 @@
+from datetime import timedelta, timezone
 from rest_framework import generics, status, permissions
 from rest_framework.response import Response
 from django.contrib.auth import get_user_model
@@ -57,6 +58,8 @@ class LoginView(generics.GenericAPIView):
         }, status=status.HTTP_200_OK)
 
 
+OTP_EXPIRY_MINUTES = 10
+
 class VerifyOTPView(generics.GenericAPIView):
     permission_classes = [permissions.AllowAny]
 
@@ -69,12 +72,15 @@ class VerifyOTPView(generics.GenericAPIView):
             return Response({"detail": "User not found"}, status=404)
 
         if user.otp_code == otp:
+            if user.otp_created_at and timezone.now() > user.otp_created_at + timedelta(minutes=OTP_EXPIRY_MINUTES):
+                return Response({"detail": "OTP expired"}, status=400)
             user.is_active = True
             user.otp_code = None
+            user.otp_created_at = None
             user.save()
             return Response({"message": "Account verified successfully"})
-        return Response({"detail": "Invalid OTP"}, status=400)
 
+        return Response({"detail": "Invalid OTP"}, status=400)
 
 class ResendOTPView(generics.GenericAPIView):
     permission_classes = [permissions.AllowAny]

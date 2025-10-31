@@ -114,6 +114,13 @@ REST_FRAMEWORK = {
 }
 
 
+SPECTACULAR_SETTINGS = {
+    'TITLE': 'Ecommerce API',
+    'DESCRIPTION': 'API documentation for Ecommerce project',
+    'VERSION': '1.0.0',
+    'SERVE_INCLUDE_SCHEMA': False,  # optional
+}
+
 # Password validation
 # https://docs.djangoproject.com/en/5.0/ref/settings/#auth-password-validators
 

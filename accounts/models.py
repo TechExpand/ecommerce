@@ -1,8 +1,8 @@
-from datetime import timedelta, timezone
+from django.utils import timezone
+from datetime import timedelta
 from django.contrib.auth.models import AbstractUser
 from django.core.exceptions import ValidationError
 from django.db import models
-
 from django.conf import settings
 import uuid
 
@@ -14,24 +14,27 @@ class User(AbstractUser):
     """
 
     email = models.EmailField(unique=True)
+    otp_code = models.CharField(max_length=6, blank=True, null=True)
+    otp_created_at = models.DateTimeField(blank=True, null=True)
 
     ROLE_CHOICES = [
-        ("admin", "Admin"),
         ("seller", "Seller"),
         ("customer", "Customer"),
+        ("admin", "Admin"),
     ]
     role = models.CharField(max_length=20, choices=ROLE_CHOICES, default="customer")
 
     phone = models.CharField(max_length=20, blank=True, null=True)
 
+
     def clean(self):
-        """
-        Ensure phone number is required for sellers and customers.
-        """
-        if self.role in ["seller", "customer"] and not self.phone:
-            raise ValidationError(
-                {"phone": "Phone number is required for sellers and customers."}
-            )
+       """
+       Ensure phone number is required for sellers and customers only.
+       """
+       if self.role in ["seller", "customer"] and not self.phone and not self.is_superuser:
+        raise ValidationError(
+            {"phone": "Phone number is required for sellers and customers."}
+        )
 
     def save(self, *args, **kwargs):
         # Run validation before saving
@@ -56,9 +59,7 @@ class Invitation(models.Model):
     )
     is_used = models.BooleanField(default=False)
     created_at = models.DateTimeField(auto_now_add=True)
-    expires_at = models.DateTimeField(
-        default=default_expires_at
-    )  # use named function
+    expires_at = models.DateTimeField(default=default_expires_at)
 
     def is_valid(self):
         return not self.is_used and self.expires_at > timezone.now()

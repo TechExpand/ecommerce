@@ -4,6 +4,8 @@ from django.core.exceptions import ValidationError
 from django.utils.crypto import get_random_string
 from .models import Invitation, User
 from .utils import send_email, send_email
+from django.contrib.auth.password_validation import validate_password
+from rest_framework_simplejwt.tokens import RefreshToken
 
 
 class RegisterSerializer(serializers.ModelSerializer):
@@ -16,13 +18,11 @@ class RegisterSerializer(serializers.ModelSerializer):
     def validate(self, data):
         role = data.get("role", "customer")
 
-        # ✅ Only allow seller or customer roles
         if role not in ["seller", "customer"]:
             raise serializers.ValidationError(
                 "You can only register as a seller or customer."
             )
 
-        # ✅ Sellers must provide phone numbers
         if role == "seller" and not data.get("phone"):
             raise serializers.ValidationError("Phone number is required for sellers.")
 
@@ -84,12 +84,12 @@ class AdminInviteSerializer(serializers.ModelSerializer):
 
 
 class AcceptAdminInviteSerializer(serializers.Serializer):
-    token = serializers.UUIDField()
     password = serializers.CharField(write_only=True)
+    token = serializers.SerializerMethodField()
 
     def validate(self, attrs):
         try:
-            invitation = Invitation.objects.get(token=attrs["token"])
+            invitation = Invitation.objects.get(token=self.context['token'])
         except Invitation.DoesNotExist:
             raise serializers.ValidationError("Invalid or expired invitation token.")
 
@@ -97,6 +97,8 @@ class AcceptAdminInviteSerializer(serializers.Serializer):
             raise serializers.ValidationError("Invitation expired or already used.")
 
         attrs["invitation"] = invitation
+        # make sure to import this
+        from django.contrib.auth.password_validation import validate_password
         validate_password(attrs["password"])
         return attrs
 
@@ -104,16 +106,19 @@ class AcceptAdminInviteSerializer(serializers.Serializer):
         invitation = validated_data["invitation"]
         password = validated_data["password"]
 
-        # Create admin user
         user = User.objects.create_user(
             username=invitation.email.split("@")[0],
             email=invitation.email,
             role="admin",
             is_staff=True,
-            is_superuser=False,  # Only super admin can manually promote to superuser if needed
+            is_superuser=False,
         )
         user.set_password(password)
         user.save()
 
         invitation.mark_used()
         return user
+
+    def get_token(self, obj):
+        refresh = RefreshToken.for_user(obj)
+        return str(refresh.access_token)
