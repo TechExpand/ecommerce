@@ -1,0 +1,119 @@
+from rest_framework import serializers
+from django.contrib.auth import get_user_model
+from django.core.exceptions import ValidationError
+from django.utils.crypto import get_random_string
+from .models import Invitation, User
+from .utils import send_email, send_email
+
+
+class RegisterSerializer(serializers.ModelSerializer):
+    password = serializers.CharField(write_only=True, min_length=8)
+
+    class Meta:
+        model = User
+        fields = ["username", "email", "phone", "password", "role"]
+
+    def validate(self, data):
+        role = data.get("role", "customer")
+
+        # ✅ Only allow seller or customer roles
+        if role not in ["seller", "customer"]:
+            raise serializers.ValidationError(
+                "You can only register as a seller or customer."
+            )
+
+        # ✅ Sellers must provide phone numbers
+        if role == "seller" and not data.get("phone"):
+            raise serializers.ValidationError("Phone number is required for sellers.")
+
+        return data
+
+    def create(self, validated_data):
+        user = User.objects.create_user(**validated_data)
+        user.is_active = False  # wait for OTP verification
+        user.otp_code = get_random_string(6, allowed_chars="0123456789")
+        user.save()
+        template = f"""
+    <h2>Verify your account</h2>
+    <p>Hello {user.username},</p>
+    <p>Your OTP code is: <b>{user.otp_code}</b></p>
+    <p>This code will expire in 10 minutes.</p>
+    <p>Thank you for joining SimplyComply!</p>
+    """
+        # send OTP by Email
+        send_email(
+            user.email,
+            "Your OTP Verification Code",
+            template,
+        )
+        return user
+
+
+class AdminInviteSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Invitation
+        fields = ["email"]
+
+    def validate(self, data):
+        user = self.context["request"].user
+        # Only super admins can send invites
+        if not user.is_superuser:
+            raise serializers.ValidationError(
+                "Only super admins can invite new admins."
+            )
+        return data
+
+    def create(self, validated_data):
+        inviter = self.context["request"].user
+        invitation = Invitation.objects.create(invited_by=inviter, **validated_data)
+
+        # Generate acceptance link
+        link = f"https://yourfrontend.com/invite/accept/?token={invitation.token}"
+        subject = "You're invited to join the Easy Money Broker Admin Panel"
+        template = f"""
+        <h2>Admin Invitation</h2>
+        <p>Hello,</p>
+        <p>You’ve been invited to join the <b>Easy Money Broker Admin Panel</b>.</p>
+        <p>Click below to set your password and activate your account:</p>
+        <a href="{link}" target="_blank">Accept Invitation</a>
+        <p>This link expires in 3 days.</p>
+        """
+
+        send_email(invitation.email, subject, template)
+        return invitation
+
+
+class AcceptAdminInviteSerializer(serializers.Serializer):
+    token = serializers.UUIDField()
+    password = serializers.CharField(write_only=True)
+
+    def validate(self, attrs):
+        try:
+            invitation = Invitation.objects.get(token=attrs["token"])
+        except Invitation.DoesNotExist:
+            raise serializers.ValidationError("Invalid or expired invitation token.")
+
+        if not invitation.is_valid():
+            raise serializers.ValidationError("Invitation expired or already used.")
+
+        attrs["invitation"] = invitation
+        validate_password(attrs["password"])
+        return attrs
+
+    def create(self, validated_data):
+        invitation = validated_data["invitation"]
+        password = validated_data["password"]
+
+        # Create admin user
+        user = User.objects.create_user(
+            username=invitation.email.split("@")[0],
+            email=invitation.email,
+            role="admin",
+            is_staff=True,
+            is_superuser=False,  # Only super admin can manually promote to superuser if needed
+        )
+        user.set_password(password)
+        user.save()
+
+        invitation.mark_used()
+        return user
