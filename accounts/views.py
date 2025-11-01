@@ -11,6 +11,7 @@ from accounts.permissions import IsSuperAdmin
 from .serializers import (
     AcceptAdminInviteSerializer,
     AdminInviteSerializer,
+    LoginSerializer,
     RegisterSerializer,
 )
 from .utils import send_email
@@ -24,6 +25,7 @@ class RegisterView(generics.CreateAPIView):
     permission_classes = [permissions.AllowAny]
 
 class LoginView(generics.GenericAPIView):
+    serializer_class = LoginSerializer
     permission_classes = [permissions.AllowAny]
 
     def post(self, request):
@@ -33,11 +35,7 @@ class LoginView(generics.GenericAPIView):
         if not email or not password:
             return Response({"detail": "Email and password are required."}, status=status.HTTP_400_BAD_REQUEST)
 
-        try:
-            user_obj = User.objects.get(email=email)
-            user = authenticate(request, username=user_obj.username, password=password)
-        except User.DoesNotExist:
-            user = None
+        user = authenticate(request, email=email, password=password)
 
         if user is None:
             return Response({"detail": "Invalid email or password."}, status=status.HTTP_401_UNAUTHORIZED)
@@ -59,6 +57,7 @@ class LoginView(generics.GenericAPIView):
                 "access": str(refresh.access_token),
             },
         }, status=status.HTTP_200_OK)
+
 
 OTP_EXPIRY_MINUTES = 10
 

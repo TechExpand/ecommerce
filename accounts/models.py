@@ -8,36 +8,27 @@ import uuid
 
 
 class User(AbstractUser):
-    """
-    Custom user model extending Django's AbstractUser.
-    Adds role-based logic and phone validation.
-    """
-
     email = models.EmailField(unique=True)
     otp_code = models.CharField(max_length=6, blank=True, null=True)
     otp_created_at = models.DateTimeField(blank=True, null=True)
 
     ROLE_CHOICES = [
-        ("seller", "Seller"),
         ("customer", "Customer"),
+        ("seller", "Seller"),
         ("admin", "Admin"),
     ]
     role = models.CharField(max_length=20, choices=ROLE_CHOICES, default="customer")
 
     phone = models.CharField(max_length=20, blank=True, null=True)
 
+    USERNAME_FIELD = "email" 
+    REQUIRED_FIELDS = ["username"] 
 
     def clean(self):
-       """
-       Ensure phone number is required for sellers and customers only.
-       """
-       if self.role in ["seller", "customer"] and not self.phone and not self.is_superuser:
-        raise ValidationError(
-            {"phone": "Phone number is required for sellers and customers."}
-        )
+        if self.role in ["seller", "customer"] and not self.phone and not self.is_superuser:
+            raise ValidationError({"phone": "Phone number is required for sellers and customers."})
 
     def save(self, *args, **kwargs):
-        # Run validation before saving
         self.full_clean()
         super().save(*args, **kwargs)
 
