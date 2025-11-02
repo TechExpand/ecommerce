@@ -19,7 +19,7 @@ class CategoryViewSet(viewsets.ReadOnlyModelViewSet):
     Lists top-level categories (cached for 10 minutes).
     Includes nested child categories.
     """
-    # ✅ FIX 1 — Only top-level categories; order by name to prevent pagination warnings
+    # FIX 1 — Only top-level categories; order by name to prevent pagination warnings
     queryset = (
         Category.objects.filter(parent__isnull=True)
         .prefetch_related("children")
@@ -37,7 +37,7 @@ class ProductViewSet(viewsets.ModelViewSet):
     queryset = (
         Product.objects.select_related("category", "owner")
         .prefetch_related("discounts")
-        .order_by("id")  # ✅ FIX 2 — ensures consistent pagination ordering
+        .order_by("id")  # FIX 2 — ensures consistent pagination ordering
     )
     filter_backends = [DjangoFilterBackend]
     filterset_fields = ["category"]
@@ -93,14 +93,14 @@ class DiscountViewSet(viewsets.ModelViewSet):
     def create(self, request, *args, **kwargs):
         user = request.user
 
-        # ✅ Enforce role before validation
+        # Enforce role before validation
         if user.role not in ["seller", "admin"]:
             raise PermissionDenied("Only sellers or admins can create discounts.")
 
         serializer = self.get_serializer(data=request.data)
         serializer.is_valid(raise_exception=True)
 
-        # ✅ Get product and ensure ownership
+        # Get product and ensure ownership
         product = serializer.validated_data.get("product")
         if not product:
             raise PermissionDenied("Product must be specified.")

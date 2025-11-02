@@ -1,5 +1,9 @@
 import os
 import requests
+from django.contrib.auth import get_user_model
+from django.contrib.auth.backends import ModelBackend
+
+User = get_user_model()
 
 def send_email(email: str, subject: str, template: str):
     """
@@ -44,3 +48,18 @@ def send_email(email: str, subject: str, template: str):
             "status": False,
             "message": str(e)
         }
+
+
+
+class EmailAuth(ModelBackend):
+    """Authenticate using email instead of username."""
+
+    def authenticate(self, request, email=None, password=None, **kwargs):
+        try:
+            user = User.objects.get(email=email)
+        except User.DoesNotExist:
+            return None
+
+        if user.check_password(password):
+            return user
+        return None

@@ -1,12 +1,32 @@
+from django.utils import timezone
+import uuid
 from rest_framework import serializers
 from django.contrib.auth import get_user_model
 from django.core.exceptions import ValidationError
 from django.utils.crypto import get_random_string
+
 from .models import Invitation, User
 from .utils import send_email, send_email
 from django.contrib.auth.password_validation import validate_password
 from rest_framework_simplejwt.tokens import RefreshToken
 
+class ResetPasswordSerializer(serializers.Serializer):
+    email = serializers.EmailField()
+    otp = serializers.CharField(max_length=6)
+    reference_id = serializers.UUIDField()
+    new_password = serializers.CharField(write_only=True, min_length=8)
+
+class ForgotPasswordSerializer(serializers.Serializer):
+    email = serializers.EmailField()
+
+class ChangePasswordSerializer(serializers.Serializer):
+    old_password = serializers.CharField(write_only=True)
+    new_password = serializers.CharField(write_only=True, min_length=8)
+
+class VerifyOTPSerializer(serializers.Serializer):
+    email = serializers.EmailField()
+    otp = serializers.CharField(max_length=6)
+    reference_id = serializers.UUIDField()
 
 class LoginSerializer(serializers.Serializer):
     email = serializers.EmailField()
@@ -30,31 +50,65 @@ class RegisterSerializer(serializers.ModelSerializer):
                 "You can only register as a seller or customer."
             )
 
-        if role == "seller" and not data.get("phone"):
-            raise serializers.ValidationError("Phone number is required for sellers.")
+
+        # Require phone for both sellers and customers
+        if role in ["seller", "customer"] and not data.get("phone"):
+            raise serializers.ValidationError({
+                "phone": "Phone number is required for sellers and customers."
+            })
+
 
         return data
 
     def create(self, validated_data):
+        otp = get_random_string(6, allowed_chars="0123456789")
+        reference_id = uuid.uuid4()
+
         user = User.objects.create_user(**validated_data)
         user.is_active = False  # wait for OTP verification
-        user.otp_code = get_random_string(6, allowed_chars="0123456789")
-        user.save()
+        user.otp_code = otp
+        user.otp_reference_id = reference_id
+        user.otp_created_at = timezone.now()
+        user.save(update_fields=["is_active", "otp_code", "otp_reference_id", "otp_created_at"])
+
+        # Build email content
         template = f"""
-    <h2>Verify your account</h2>
-    <p>Hello {user.username},</p>
-    <p>Your OTP code is: <b>{user.otp_code}</b></p>
-    <p>This code will expire in 10 minutes.</p>
-    <p>Thank you for joining SimplyComply!</p>
-    """
-        # send OTP by Email
+        <h2>Verify your account</h2>
+        <p>Hello {user.username},</p>
+        <p>Your OTP code is: <b>{otp}</b></p>
+        <p>This code will expire in 10 minutes.</p>
+        <p>Thank you for joining SimplyComply!</p>
+        """
+
+        # Send OTP email
         send_email(
             user.email,
             "Your OTP Verification Code",
             template,
         )
-        return user
 
+        # Return user and reference ID
+        return {
+            "user": user,
+            "reference_id": str(reference_id),
+        }
+
+    def to_representation(self, instance):
+        # instance here is the dict returned from create()
+        return {
+            "message": "Registration successful. Please verify your account using the OTP sent to your email.",
+            "reference_id": instance["reference_id"],
+            "email": instance["user"].email,
+        }
+
+
+
+
+class ResendOTPSerializer(serializers.Serializer):
+    email = serializers.EmailField(
+        required=True,
+        help_text="Email address to resend OTP to."
+    )
 
 class AdminInviteSerializer(serializers.ModelSerializer):
     class Meta:

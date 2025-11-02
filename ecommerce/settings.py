@@ -35,14 +35,19 @@ AUTH_USER_MODEL='accounts.User'
 
 # Application definition
 
-
 DATABASES = {
-    'default': dj_database_url.config(
+    "default": dj_database_url.config(
         default=os.getenv("DATABASE_URL"),
-        conn_max_age=600,
-        ssl_require=True
+        conn_max_age=600
     )
 }
+
+
+AUTHENTICATION_BACKENDS = {
+     'accounts.utils.EmailAuth',
+     'django.contrib.auth.backends.ModelBackend', 
+}
+
 
 INSTALLED_APPS = [
     'django.contrib.admin',
@@ -93,12 +98,6 @@ WSGI_APPLICATION = 'ecommerce.wsgi.application'
 # Database
 # https://docs.djangoproject.com/en/5.0/ref/settings/#databases
 
-DATABASES = {
-    'default': {
-        'ENGINE': 'django.db.backends.sqlite3',
-        'NAME': BASE_DIR / 'db.sqlite3',
-    }
-}
 
 REST_FRAMEWORK = {
     "DEFAULT_SCHEMA_CLASS": "drf_spectacular.openapi.AutoSchema",

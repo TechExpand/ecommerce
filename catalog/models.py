@@ -1,7 +1,7 @@
 from django.conf import settings
 from django.db import models
 from django.core.validators import MinValueValidator
-from decimal import Decimal
+from decimal import ROUND_HALF_UP, Decimal
 from django.utils import timezone
 
 User = settings.AUTH_USER_MODEL  # reference the custom user safely
@@ -27,24 +27,30 @@ class Product(models.Model):
 
     def __str__(self):
         return self.name
-
+    
     def get_final_price(self):
-        now = timezone.now()
-        discounts = self.discounts.filter(active=True).filter(
-            models.Q(start_at__lte=now) | models.Q(start_at__isnull=True),
-            models.Q(end_at__gte=now) | models.Q(end_at__isnull=True)
-        )
-        best = Decimal('0')
-        for discount in discounts:
-            if discount.discount_type == Discount.PERCENT:
-                amount = (self.price * discount.value) / Decimal('100')
-            else:
-                amount = discount.value
-            if amount > best:
-                best = amount
-        final = self.price - best
-        return max(final, Decimal('0.00'))
+       from django.db.models import Q
+       now = timezone.now()
 
+       discounts = Discount.objects.filter(
+          product=self,
+          active=True
+      ).filter(
+         Q(start_at__lte=now) | Q(start_at__isnull=True),
+         Q(end_at__gte=now) | Q(end_at__isnull=True)
+        )
+
+       best = Decimal('0')
+       for discount in discounts:
+          if discount.discount_type == Discount.PERCENT:
+              amount = (self.price * discount.value) / Decimal('100')
+          else:
+              amount = discount.value
+          best = max(best, amount)
+
+       final = self.price - best
+       final = final.quantize(Decimal('0.01'), rounding=ROUND_HALF_UP)
+       return max(final, Decimal('0.00'))
 
 class Discount(models.Model):
     PERCENT = 'percent'

@@ -6,10 +6,13 @@ from django.db import models
 from django.conf import settings
 import uuid
 
-
 class User(AbstractUser):
     email = models.EmailField(unique=True)
+    phone = models.CharField(max_length=20, blank=True, null=True)
+    is_verified = models.BooleanField(default=False)
+
     otp_code = models.CharField(max_length=6, blank=True, null=True)
+    otp_reference_id = models.UUIDField(blank=True, null=True, editable=False)
     otp_created_at = models.DateTimeField(blank=True, null=True)
 
     ROLE_CHOICES = [
@@ -19,10 +22,8 @@ class User(AbstractUser):
     ]
     role = models.CharField(max_length=20, choices=ROLE_CHOICES, default="customer")
 
-    phone = models.CharField(max_length=20, blank=True, null=True)
-
-    USERNAME_FIELD = "email" 
-    REQUIRED_FIELDS = ["username"] 
+    USERNAME_FIELD = "email"
+    REQUIRED_FIELDS = ["username"]
 
     def clean(self):
         if self.role in ["seller", "customer"] and not self.phone and not self.is_superuser:
@@ -32,8 +33,30 @@ class User(AbstractUser):
         self.full_clean()
         super().save(*args, **kwargs)
 
+    def generate_otp(self):
+        """Generates a new OTP and reference ID."""
+        from random import randint
+
+        self.otp_code = str(randint(100000, 999999))
+        self.otp_reference_id = uuid.uuid4()
+        self.otp_created_at = timezone.now()
+        self.save(update_fields=["otp_code", "otp_reference_id", "otp_created_at"])
+        return self.otp_reference_id, self.otp_code
+
+    def verify_otp(self, otp, reference_id):
+        """Validates OTP and reference ID."""
+        if str(self.otp_reference_id) != str(reference_id):
+            return False, "Invalid or expired OTP session"
+        if self.otp_code != otp:
+            return False, "Invalid OTP"
+        if self.otp_created_at and timezone.now() > self.otp_created_at + timedelta(minutes=10):
+            return False, "OTP expired"
+        return True, "Verified"
+
     def __str__(self):
         return f"{self.username} ({self.role})"
+
+
 
 
 def default_expires_at():
